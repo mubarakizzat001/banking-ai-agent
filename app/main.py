@@ -1,10 +1,16 @@
 from api.router import master_router
 from fastapi import FastAPI
 from scalar_fastapi import get_scalar_api_reference
+from database.session import create_db
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_db()
+    yield
 
 
-
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 app.include_router(master_router)
 
 @app.get("/scalar",include_in_schema=False)

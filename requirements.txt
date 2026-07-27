@@ -43,3 +43,4 @@ uvloop==0.22.1
 watchfiles==1.2.0
 websockets==16.1.1
 sqlmodel ==0.0.39
+asyncpg ==0.31.0
