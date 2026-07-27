@@ -18,5 +18,5 @@ class databseconfig(BaseSettings):
     def async_db_url(self) -> str:
         return f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}@{self.postgres_server}:{self.postgres_port}/{self.postgres_db}"
 
-    settingDB=databseconfig()
-    
+
+settingDB=databseconfig()
