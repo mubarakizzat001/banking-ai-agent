@@ -1,5 +1,5 @@
 from pydantic import BaseModel,EmailStr
-
+from uuid import UUID
 
 class CustomerBase(BaseModel):
     name:str
@@ -14,7 +14,6 @@ class CustomerCreate(CustomerBase):
 class CustomerUpdate(CustomerBase):
     pass
 
-
 class CustomerResponse(CustomerBase):
-    id:int
-    
+    id:UUID
+
