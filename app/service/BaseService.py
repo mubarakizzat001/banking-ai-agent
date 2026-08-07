@@ -1,3 +1,4 @@
+from uuid import UUID
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import SQLModel
 
@@ -8,8 +9,8 @@ class BaseService:
         self.model=model
         self.session=session
 
-    async def _get(self,id:int):
-        return await self.session.get(self.model,id)
+    async def _get(self,model:SQLModel,id:UUID):
+        return await self.session.get(model,id)
 
     async def _create(self,data:SQLModel):
         self.session.add(data)

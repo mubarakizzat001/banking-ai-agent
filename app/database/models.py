@@ -47,12 +47,18 @@ account_number_seq = Sequence("account_number_seq", start=10000000, increment=1)
 
 
 class Account(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    
+    id: UUID = Field(
+        sa_column=Column(
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            default=uuid4,
+            nullable=False
+        )
+    )
     
     customer_id: UUID = Field(foreign_key="customer.id", nullable=False)
     
-   
+    name :str=Field(max_length=100, nullable=False)
     customer: Customer | None = Relationship(back_populates="accounts")
 
     account_number: str = Field(
@@ -68,6 +74,7 @@ class Account(SQLModel, table=True):
     
     account_type: AccountType = Field(nullable=False)
     balance: float = Field(default=0.0)
+    status : str = Field(default="ACTIVE",nullable=False)
     created_at: datetime = Field(
         sa_column=Column(
             postgresql.TIMESTAMP(timezone=True),
@@ -77,7 +84,14 @@ class Account(SQLModel, table=True):
     )
 
 class Transaction(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: UUID = Field(
+        sa_column=Column(
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            default=uuid4,
+            nullable=False
+        )
+    )
     account_number: str = Field(max_length=20, nullable=False, index=True)
     amount: float = Field(nullable=False)
     transaction_type: str = Field(max_length=20, nullable=False)  # DEPOSIT, WITHDRAW, TRANSFER
