@@ -8,10 +8,10 @@ class TransactionResponse(BaseModel):
     
 
 class DepositTransactionResponse(TransactionResponse):
-   account_number: int = Field(..., description="Account number cannot be empty")
+   account_number: str = Field(..., description="Account number cannot be empty")
 class WithdrawalTransactionResponse(TransactionResponse):
-    account_number: int = Field(..., description="Account number cannot be empty")
+    account_number: str = Field(..., description="Account number cannot be empty")
 
 class TransferTransactionResponse(TransactionResponse):
-    source_account_number: int = Field(..., description="Source account number cannot be empty")
-    target_account_number: int = Field(..., description="Target account number cannot be empty")
+    source_account_number: str = Field(..., description="Source account number cannot be empty")
+    target_account_number: str = Field(..., description="Target account number cannot be empty")

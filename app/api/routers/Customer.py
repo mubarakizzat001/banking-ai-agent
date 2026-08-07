@@ -1,4 +1,4 @@
-from api.dependencies import servicesDep
+from api.dependencies import customerServiceDep
 from api.schema.Customer import CustomerCreate,CustomerResponse,CustomerUpdate
 from fastapi import APIRouter
 
@@ -9,5 +9,5 @@ router=APIRouter(
 )
 
 @router.post("/customers",response_model=CustomerResponse)
-async def create_customer(customer:CustomerCreate,servicesDep:servicesDep):
-    return await servicesDep.create_customer(customer)
+async def create_customer(customer:CustomerCreate,service:customerServiceDep):
+    return await service.create_customer(customer)
