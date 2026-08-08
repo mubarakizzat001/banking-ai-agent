@@ -41,6 +41,11 @@ class Customer(SQLModel, table=True):
         sa_relationship_kwargs={"lazy": "selectin"}
     )
 
+    user_accounts: list["UserAccounts"] = Relationship(
+        back_populates="customer",
+        sa_relationship_kwargs={"lazy": "selectin"}
+    )
+
 
 account_number_seq = Sequence("account_number_seq", start=10000000, increment=1)
 
@@ -82,6 +87,7 @@ class Account(SQLModel, table=True):
             nullable=False
         )
     )
+   
 
 class Transaction(SQLModel, table=True):
     id: UUID = Field(
@@ -102,3 +108,19 @@ class Transaction(SQLModel, table=True):
             nullable=False
         )
     )
+
+
+class UserAccounts(SQLModel,table=True):
+    id: UUID = Field(
+        sa_column=Column(
+            postgresql.UUID(as_uuid=True),
+            primary_key=True,
+            default=uuid4,
+            nullable=False
+        )
+    )
+    customer_id: UUID = Field(foreign_key="customer.id", nullable=False,unique=True)
+    hash_password : str = Field(max_length=256, nullable=False)
+
+    customer: Customer | None = Relationship(back_populates="user_accounts")
+   

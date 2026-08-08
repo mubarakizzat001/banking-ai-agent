@@ -8,7 +8,7 @@ engine=create_async_engine(
 )
 async def create_db():
     async with engine.begin() as conn:
-        from database.models import Account,Customer,Transaction
+        from database.models import Account,Customer,Transaction,UserAccounts
         await conn.run_sync(SQLModel.metadata.create_all)
 
 async def get_session():
