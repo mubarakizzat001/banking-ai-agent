@@ -4,7 +4,7 @@ from .BaseService import BaseService
 from database.models import UserAccounts,Customer
 from fastapi import HTTPException
 import bcrypt
-
+from utils import create_access_token
 
 
 class UserService(BaseService):
@@ -43,7 +43,7 @@ class UserService(BaseService):
     async def login(self,email:str,password:str):
         user=await self.get_user(email)
         if bcrypt.checkpw(password.encode("utf-8"), user.hash_password.encode("utf-8")):
-            return user
+            return create_access_token({"id": str(user.id), "customer_id": str(user.customer_id)})
         else:
             raise HTTPException(status_code=401,detail="Invalid credentials")
             
