@@ -24,6 +24,11 @@ class jwtconfig(BaseSettings):
 
     model_config=_base_model
     
+class redisconfig(BaseSettings):
+    redis_host:str
+    redis_port:int
 
+    model_config=_base_model
 settingDB=databseconfig()
 settingJWT=jwtconfig()
+settingRedis=redisconfig()
