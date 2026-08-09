@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 _base_model=SettingsConfigDict(
-    env_file="../.env",
+    env_file=".env",
     env_ignore_empty=True,
     extra="ignore"
 )
