@@ -12,7 +12,7 @@ class CustomerService(BaseService):
 
     async def create_customer(self, customer: CustomerCreate):
         existing = await self.session.execute(
-            select(Customer.email, Customer.phone).where(
+            select(Customer.id,Customer.email, Customer.phone).where(
                 or_(
                     Customer.email == customer.email,
                     Customer.phone == customer.phone,
@@ -22,11 +22,11 @@ class CustomerService(BaseService):
         row = existing.first()
         if row:
             if row.email == customer.email:
-                raise HTTPException(status_code=400, detail="Email already exists")
-            raise HTTPException(status_code=400, detail="Phone already exists")
+                raise HTTPException(status_code=400, detail=f"Email already used by customer {row.id}")
+            raise HTTPException(status_code=400, detail=f"Phone already used by customer {row.id}")
 
         try:
             return await self._create(Customer(**customer.model_dump()))
         except IntegrityError:
             await self.session.rollback()
-            raise HTTPException(status_code=400, detail="Email or phone already exists")
+            raise HTTPException(status_code=400, detail="Email or phone already used")

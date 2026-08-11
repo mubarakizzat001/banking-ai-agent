@@ -17,3 +17,10 @@ class AccountResponse(BaseModel):
     status:str
     created_at:datetime
 
+class MyAccountResponse(BaseModel):
+    account_number: str
+    account_type: AccountType
+    name:str
+    balance:float
+    status:str
+   
