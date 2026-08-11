@@ -37,3 +37,43 @@ class AccountService(BaseService):
                 detail="Account not found",
             )
         return account
+    async def close_account(self, customer_id: UUID, account_type: AccountType):
+        statement = select(Account).where(
+            Account.customer_id == customer_id,
+            Account.account_type == account_type.value
+        )
+        result = await self.session.execute(statement)
+        account = result.scalars().first()
+
+        if not account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Specified account not found",
+        )
+
+        if account.status != "ACTIVE" or account.balance != 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Account is not active or balance is not 0",
+            )
+
+        account.status = "closed"
+        await self._update(account)
+        return account
+
+    async def get_my_accounts(self, customer_id: UUID, account_type: AccountType):
+        statement = select(Account).where(
+            Account.customer_id == customer_id,
+            Account.account_type == account_type.value
+        )
+        result = await self.session.execute(statement)
+        account = result.scalars().all()
+
+        if not account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Specified account not found",
+        )
+
+        return account[-1]
+

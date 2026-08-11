@@ -1,8 +1,10 @@
+from api.schema.TransactionResponse import JWTTransactionResponse
+from api.schema import TransactionResponse
 from api.schema.TransactionResponse import DepositTransactionResponse, WithdrawalTransactionResponse, TransferTransactionResponse
 from fastapi import HTTPException, status
 from sqlmodel import select
 
-from api.schema.Transaction import DepositTransaction, TransactionType, WithdrawalTransaction, TransferTransaction
+from api.schema.Transaction import DepositTransaction, TransactionType, WithdrawalTransaction, TransferTransaction,JWTTransaction
 from database.models import Account, Transaction
 from .BaseService import BaseService
 
@@ -146,4 +148,80 @@ class TransactionService(BaseService):
             amount=transaction.amount,
             description=transaction.description,
             balance=source_account.balance,
+        )
+
+    #_____________________________transcation with jwt_______________________  
+
+    async def transfer_from_my_account(
+        self, transaction: JWTTransaction, customer
+    ) -> JWTTransactionResponse:
+
+        stmt_source = select(Account).where(
+            Account.customer_id == customer.id,
+            Account.account_type == transaction.account_type.value,
+            Account.status == "ACTIVE",
+        )
+        res_source = await self.session.execute(stmt_source)
+        source_account = res_source.scalars().first()
+
+        if not source_account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"No active {transaction.account_type.value} account found for"
+                    " this customer"
+                ),
+            )
+
+
+        stmt_dest = select(Account).where(
+            Account.account_number == transaction.target_account,
+            Account.status == "ACTIVE",
+        )
+        res_dest = await self.session.execute(stmt_dest)
+        dest_account = res_dest.scalars().first()
+
+        if not dest_account:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Target account not found or is not active",
+            )
+
+        if source_account.account_number == dest_account.account_number:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot transfer funds to the same account",
+            )
+        print(source_account.balance)
+        print(transaction.amount)
+        print(transaction.account_type.value)
+        print(source_account.account_number)
+
+        if source_account.balance < transaction.amount:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Insufficient balance",
+            )
+
+
+        source_account.balance -= transaction.amount
+        dest_account.balance += transaction.amount
+
+        await self._update(source_account)
+        await self._update(dest_account)
+
+
+        db_transaction = Transaction(
+            account_number=source_account.account_number,
+            amount=transaction.amount,
+            transaction_type=TransactionType.TRANSFER.value,
+            description=transaction.description,
+        )
+        await self._create(db_transaction)
+
+        return JWTTransactionResponse(
+            target_account=dest_account.account_number,
+            amount=transaction.amount,
+            description=transaction.description,
+            account_type=transaction.account_type.value,
         )

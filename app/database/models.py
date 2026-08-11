@@ -8,9 +8,9 @@ from sqlmodel import SQLModel, Field, Sequence, Column, String, Relationship
 
 
 class AccountType(str, Enum):
-    SAVINGS = "savings"
-    CURRENT = "current"
-    SALARY = "salary"
+    SAVINGS = "SAVINGS"
+    CURRENT = "CURRENT"
+    SALARY = "SALARY"
 
 
 
