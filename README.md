@@ -6,6 +6,19 @@
 
 ---
 
+## 🧪 Public "Sandbox" Endpoints vs. Customer-Protected Endpoints
+
+[#-public-sandbox-endpoints-vs-customer-protected-endpoints](#-public-sandbox-endpoints-vs-customer-protected-endpoints)
+
+This project intentionally exposes **two layers** of endpoints:
+
+- **Sandbox layer (no auth required)** — `POST /customers/customers`, `POST /accounts/create`, `GET /accounts/account/{account_number}`, `POST /transactions/deposit`, `/withdraw`, `/transfer`. These exist so anyone cloning the repo can create test customers/accounts and try deposits, withdrawals, and transfers immediately, without first wiring up a login flow. Think of it as a public playground for exploring the API.
+- **Customer layer (JWT-protected)** — everything under an authenticated session: `POST /user/login`, `GET /accounts/my-accounts`, `POST /accounts/close-my-account`, `POST /transactions/transfer_from_my_account`. This is the real "logged-in customer" experience — the source account is always resolved from the JWT, never taken as raw input, so a customer can only ever move money out of their *own* account.
+
+⚠️ **This split is a deliberate demo/learning-project decision, not an oversight.** In a real production deployment, the sandbox layer would either be removed entirely or placed behind admin-only authentication, and all money-movement would go exclusively through the JWT-protected, customer-scoped routes.
+
+---
+
 ## 🏗️ Project Structure
 
 ```
