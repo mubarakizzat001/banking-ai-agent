@@ -24,11 +24,18 @@ This project intentionally exposes **two layers** of endpoints:
 ```
 banking-ai-agent/
 ├── .env.example                    # Environment variables template
+├── alembic.ini                     # Alembic config (script location, DB URL placeholder)
+├── docker-compose.test.yml         # Disposable Postgres container for the test suite
 ├── requirements.txt                # Python dependencies
 └── app/
     ├── main.py                     # FastAPI entry point & lifespan events
     ├── config.py                   # Pydantic Settings (DB, JWT, Redis config from .env)
     ├── utils.py                    # JWT access token creation & decoding
+    ├── migrations/                  # Alembic environment
+    │   ├── env.py                   # Async migration runner, wired to settingDB & SQLModel.metadata
+    │   ├── script.py.mako           # Revision file template
+    │   └── versions/                # Revision scripts
+    ├── tests/                       # Pytest suite (see Testing section below)
     ├── api/
     │   ├── router.py                # Master router (aggregates all sub-routers)
     │   ├── dependencies.py          # Dependency injection (session, services, auth)
@@ -72,6 +79,8 @@ banking-ai-agent/
 | Validation | Pydantic v2 |
 | Config | `pydantic-settings` (reads `.env`) |
 | API Docs | Swagger UI + Scalar |
+| Migrations | Alembic (async, autogenerate from `SQLModel.metadata`) |
+| Testing | `pytest` + `pytest-asyncio` + `httpx` |
 
 ---
 
@@ -121,6 +130,30 @@ All models live in `app/database/models.py` and use **SQLModel** with PostgreSQL
 | `id` | `UUID` | Primary key, auto-generated |
 | `customer_id` | `UUID` | Foreign key → `customer.id`, unique (one login per customer) |
 | `hash_password` | `str` | Max 256 chars, `bcrypt`-hashed |
+
+---
+
+## 🔄 Database Migrations (Alembic)
+
+Alembic is wired up for **async** migrations against the same `SQLModel.metadata` used by the app.
+
+- **Config** — `alembic.ini` (repo root) sets `script_location = app/migrations` and prepends `app/` to `sys.path` so migration scripts can import project modules the same way the app does.
+- **Environment** — `app/migrations/env.py` overrides `sqlalchemy.url` at runtime with `settingDB.async_db_url` (from `app/config.py`, i.e. your `.env`) instead of the placeholder in `alembic.ini`, and runs migrations through an async engine (`async_engine_from_config` + `run_sync`).
+- **Target metadata** — `target_metadata = SQLModel.metadata`, so `alembic revision --autogenerate` diffs against the `Customer`, `Account`, `Transaction`, and `UserAccounts` models in `app/database/models.py`.
+- **Baseline revision** — `a72e0747fae9_init_alembic.py` is currently an **empty baseline** (`upgrade`/`downgrade` are no-ops). Schema creation today still happens via `create_db()` in `app/database/session.py` (`SQLModel.metadata.create_all`, called from the FastAPI `lifespan`) — Alembic is set up and ready, but hasn't yet taken over as the source of truth for schema changes.
+
+### Common commands
+
+```bash
+# generate a new revision from model changes
+alembic revision --autogenerate -m "describe the change"
+
+# apply migrations
+alembic upgrade head
+
+# roll back one revision
+alembic downgrade -1
+```
 
 ---
 
@@ -369,13 +402,55 @@ Tables are **auto-created** on startup via the lifespan event.
 
 ---
 
+## 🧪 Testing
+
+The test suite is a set of **async integration tests** that drive the real FastAPI app (via `httpx.AsyncClient` + `ASGITransport`) against a disposable, dockerized Postgres database — no mocking of the DB or service layer.
+
+### Stack
+
+| Tool | Purpose |
+|------|---------|
+| `pytest` + `pytest-asyncio` | Test runner (`--asyncio-mode=auto`, configured in `pytest.ini`) |
+| `httpx.AsyncClient` | Drives the app in-process via `ASGITransport`, no real network calls |
+| `docker-compose.test.yml` | Spins up an isolated `postgres:16-alpine` container (`banking_test_db`) on port `5433`, DB `banking_test` |
+| Real Redis instance | The same Redis used in dev (`app/database/redis.py`) — required for JWT blacklist checks on protected routes |
+
+### How it works (`app/tests/conftest.py`)
+
+- `async_client` — a session-scoped `AsyncClient` bound to the FastAPI app.
+- `setup_teardown` (autouse, function-scoped) — before each test, creates all tables on the test database and overrides the `get_session` dependency to point at it; after each test, drops all tables. This means **every test starts from a clean, empty database**.
+
+### Test files (`app/tests/`)
+
+| File | Covers |
+|------|--------|
+| `example.py` | Shared fixtures/data + reusable async helpers: `register_customer`, `open_account`, `register_login`, `login`, `auth_headers`, and `onboard_customer` (full customer → account → login → JWT pipeline for tests that need an authenticated caller) |
+| `test_main.py` | Root health-check endpoint (`GET /`) |
+| `test_customer_router.py` | `POST /customers/customers` — creation, validation errors, duplicate email/phone handling |
+| `test_account_router.py` | Account create/get, `my-accounts` and `close-my-account` (JWT-protected), including auth failures and business-rule errors (closing a non-zero-balance account, no matching account type) |
+| `test_transaction_router.py` | Deposit, withdrawal, transfer, and `transfer_from_my_account` — success paths plus insufficient balance, inactive accounts, missing accounts, self-transfers, and missing auth |
+| `test_user_router.py` | User registration, lookup by email, login (incl. wrong password / unknown user), and logout — including verifying a blacklisted token is rejected on reuse |
+
+### Running the tests
+
+```bash
+# 1. Start the disposable test database
+docker compose -f docker-compose.test.yml up -d
+
+# 2. Make sure Redis is running (used for JWT blacklist checks)
+
+# 3. Run the suite
+pytest
+```
+
+---
+
 ## 🗺️ Roadmap
 
 This project is still under active development. Planned/upcoming work includes:
 
 - 🤖 **AI Customer Support** — an AI agent to handle customer banking queries (balances, transaction history, general support) on top of the existing services.
 - Additional account & transaction management endpoints.
-- Broader test coverage.
 
 ---
 
