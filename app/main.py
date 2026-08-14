@@ -13,6 +13,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 app.include_router(master_router)
 
+@app.get("/",include_in_schema=False)
+async def root():
+    return {"message":"server is running!"}
+
 @app.get("/scalar",include_in_schema=False)
 async def scalar():
     return get_scalar_api_reference(
