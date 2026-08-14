@@ -1,3 +1,4 @@
+
 from sqlmodel import SQLModel
 from database.session import get_session
 import pytest_asyncio
@@ -47,8 +48,9 @@ async def setup_teardown():
     async with test_engine.begin() as conn:
         from database.models import Account,Customer,Transaction,UserAccounts
         await conn.run_sync(SQLModel.metadata.create_all)
+      
     yield
-    
+
     async with test_engine.begin() as conn:
 
         await conn.run_sync(SQLModel.metadata.drop_all)
