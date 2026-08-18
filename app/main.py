@@ -6,11 +6,16 @@ from contextlib import asynccontextmanager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from agent.client import init_client
+    await init_client(app)
     await create_db()
     yield
+    from agent.client import close_client
+    await close_client()
 
 
 app = FastAPI(lifespan=lifespan)
+
 app.include_router(master_router)
 
 @app.get("/",include_in_schema=False)

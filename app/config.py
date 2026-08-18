@@ -29,6 +29,16 @@ class redisconfig(BaseSettings):
     redis_port:int
 
     model_config=_base_model
+
+class AIconfig(BaseSettings):
+    OPENROUTER_API_KEY:str
+    OPENROUTER_MODEL:str
+    OPENROUTER_BASE_URL:str="https://openrouter.ai/api/v1"
+
+
+    model_config=_base_model
+    
 settingDB=databseconfig()
 settingJWT=jwtconfig()
 settingRedis=redisconfig()
+settingAI=AIconfig()

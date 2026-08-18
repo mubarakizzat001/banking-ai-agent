@@ -11,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated
 from database.session import get_session
 from database.redis import is_token_blacklisted
+from service.AgentService import AgentService
+from typing import Optional
+
 
 
 
@@ -31,6 +34,17 @@ async def get_current_user(token: Annotated[dict,Depends(get_access_token)],sess
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,detail="User not found")
     return user   
 
+activeuserdep=Annotated[Customer,Depends(get_current_user)]
+async def get_agent_service(
+    customer:activeuserdep,
+    headers: Annotated[str,Depends(oauth2_scheme)]
+)->AgentService:
+     return AgentService(
+        auth_headers={"Authorization": f"Bearer {headers}"},
+        customer_name=customer.name,
+    )
+
+
 def get_customer_service(session:sessionDep):
     return CustomerService(session=session)
 
@@ -50,3 +64,4 @@ accountServiceDep=Annotated[AccountService,Depends(get_account_service)]
 transactionServiceDep=Annotated[TransactionService,Depends(get_transaction_service)]
 userServiceDep=Annotated[UserService,Depends(get_user_service)]
 activeuserdep=Annotated[Customer,Depends(get_current_user)]
+agentServiceDep=Annotated[AgentService,Depends(get_agent_service)]
