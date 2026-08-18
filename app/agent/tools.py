@@ -46,7 +46,7 @@ def build_tools(headers:dict)->list[StructuredTool]:
     ) -> str:
         data =await _request(
             "POST",
-            "/accounts/transfer",
+            "/transactions/transfer_from_my_account",
             headers,
             json={
                 "target_account":target_account,
@@ -67,7 +67,7 @@ def build_tools(headers:dict)->list[StructuredTool]:
     ) -> str:
         data = await _request(
             "POST",
-            "/accounts/close",
+            "/accounts/close-my-account",
             headers,
             params={"account_type": account_type.value}
         )

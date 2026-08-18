@@ -2,7 +2,7 @@
 
 > A database-driven Banking API built with **FastAPI**, **SQLModel**, **PostgreSQL (asyncpg)**, **Redis**, and **Pydantic v2** — featuring customer management, JWT authentication, account lifecycle, and transactional banking operations with a clean service-oriented architecture.
 
-> 🚧 **Status: Active development.** The core banking + auth flow is implemented, but this project is not finished. See [Roadmap](#-roadmap) for what's planned next, including an AI-powered customer support agent.
+> 🚧 **Status: Active development.** The core banking + auth flow, plus a streaming AI banking agent, are implemented, but this project is not finished. See [Roadmap](#-roadmap) for what's planned next.
 
 ---
 
@@ -36,6 +36,11 @@ banking-ai-agent/
     │   ├── script.py.mako           # Revision file template
     │   └── versions/                # Revision scripts
     ├── tests/                       # Pytest suite (see Testing section below)
+    ├── agent/                       # AI banking agent (LangChain / LangGraph)
+    │   ├── agent.py                  # create_banking_agent() - builds the LangGraph agent w/ system prompt
+    │   ├── client.py                  # In-process httpx.AsyncClient (ASGITransport) shared by agent tools
+    │   ├── tools.py                   # StructuredTool defs: check_balance, transfer_money, close_account
+    │   └── SchemaTools.py              # Pydantic arg schemas for the agent's tools
     ├── api/
     │   ├── router.py                # Master router (aggregates all sub-routers)
     │   ├── dependencies.py          # Dependency injection (session, services, auth)
@@ -44,13 +49,15 @@ banking-ai-agent/
     │   │   │                        # POST /user/login, POST /user/logout
     │   │   ├── Customer.py          # POST /customers/customers
     │   │   ├── Account.py           # POST/GET account endpoints (incl. JWT-protected)
-    │   │   └── Transaction.py       # Deposit / withdraw / transfer endpoints
+    │   │   ├── Transaction.py       # Deposit / withdraw / transfer endpoints
+    │   │   └── Agent.py             # POST /agent/chat (SSE streaming chat)
     │   └── schema/
     │       ├── User.py               # User (auth) request/response schemas
     │       ├── Customer.py           # Customer request/response schemas
     │       ├── account.py            # Account request/response schemas
     │       ├── Transaction.py        # Transaction request schemas
-    │       └── TransactionResponse.py # Transaction response schemas
+    │       ├── TransactionResponse.py # Transaction response schemas
+    │       └── Agent.py               # ChatMessage / ChatRequest schemas
     ├── core/
     │   └── security.py              # OAuth2PasswordBearer scheme (tokenUrl=/user/login)
     ├── database/
@@ -62,7 +69,8 @@ banking-ai-agent/
         ├── CustomerService.py        # Customer creation with duplicate checks
         ├── UserService.py            # User registration, login, password hashing
         ├── AccountSerivce.py         # Account creation, lookup, my-accounts, close-account
-        └── Transaction.py            # Deposit, withdrawal, transfer & JWT transfer logic
+        ├── Transaction.py            # Deposit, withdrawal, transfer & JWT transfer logic
+        └── AgentService.py           # Wraps the LangGraph agent, streams SSE chat events
 ```
 
 ---
@@ -81,6 +89,7 @@ banking-ai-agent/
 | API Docs | Swagger UI + Scalar |
 | Migrations | Alembic (async, autogenerate from `SQLModel.metadata`) |
 | Testing | `pytest` + `pytest-asyncio` + `httpx` |
+| AI Agent | `langchain` + `langgraph` (`create_agent`) + `langchain-openai`, served via OpenRouter |
 
 ---
 
@@ -211,6 +220,14 @@ Auth uses the OAuth2 Password flow to issue a JWT that identifies the authentica
 
 `transfer_from_my_account` resolves the *source* account from the authenticated customer's `account_type` (no need to pass a source account number) and transfers to `target_account`.
 
+### AI Agent
+
+| Operation | Endpoint | Method | Auth | Request Schema | Response |
+|-----------|----------|--------|------|----------------|-----------|
+| Chat with the banking agent | `/agent/chat` | `POST` | Bearer token | `ChatRequest` (`message`, `history`) | `text/event-stream` (SSE) |
+
+See [AI Banking Agent](#-ai-banking-agent) below for the event format and available tools.
+
 ---
 
 ## 📦 Schema Design
@@ -267,6 +284,38 @@ All response schemas inherit from `TransactionResponse`, which includes `amount`
 
 ---
 
+## 🤖 AI Banking Agent
+
+`POST /agent/chat` exposes a JWT-protected, streaming chat agent (LangChain's `create_agent` on LangGraph) that lets an authenticated customer manage their own accounts in natural language.
+
+### How it's wired
+
+- **`agent/client.py`** — a single in-process `httpx.AsyncClient` bound to the FastAPI app via `ASGITransport`, created on app startup (`lifespan` in `app/main.py`) and closed on shutdown. The agent's tools call the app's own HTTP endpoints through this client instead of hitting the service layer directly.
+- **`agent/tools.py`** — builds three `StructuredTool`s (`check_balance`, `transfer_money`, `close_account`) closed over the caller's `Authorization` header, so every tool call is scoped to the authenticated customer just like a normal request.
+- **`agent/agent.py`** — `create_banking_agent()` builds the LangGraph agent from `ChatOpenAI` (routed through OpenRouter) and a system prompt that pins the assistant to the current customer's own accounts and forbids asking for account numbers on their own accounts.
+- **`service/AgentService.py`** — lazily creates the agent per request, streams it via `agent.astream(..., stream_mode=["messages", "updates"])`, and turns the stream into Server-Sent Events.
+- **`api/dependencies.py`** — `get_agent_service` builds `AgentService` from `activeuserdep` (the authenticated `Customer`) and the raw bearer token, so the agent always acts as that customer.
+
+### SSE event format
+
+| Event | Payload | When |
+|-------|---------|------|
+| `token` | `{ content }` | Streamed chunk of the assistant's reply text |
+| `tool_call` | `{ name, args }` | The agent decided to call one of its tools |
+| `tool_result` | `{ name, content }` | A tool call finished and returned a result |
+| `error` | `{ detail }` | An exception occurred during streaming |
+| `done` | `[DONE]` | Always sent last, stream is finished |
+
+### Tools available to the agent
+
+| Tool | Calls | Purpose |
+|------|-------|---------|
+| `check_balance` | `POST /accounts/my-accounts` | Look up balance/status of one of the customer's own accounts by `account_type` |
+| `transfer_money` | `POST /transactions/transfer_from_my_account` | Transfer from the customer's own account to `target_account` |
+| `close_account` | `POST /accounts/close-my-account` | Close one of the customer's own accounts by `account_type` |
+
+---
+
 ## 🧩 Architecture Patterns
 
 ### Service Layer (`BaseService`)
@@ -299,6 +348,7 @@ Each service has a dedicated factory function and an `Annotated` type alias:
 | `transactionServiceDep` | `TransactionService` |
 | `userServiceDep` | `UserService` |
 | `activeuserdep` | Current authenticated `Customer` |
+| `agentServiceDep` | `AgentService` (built from `activeuserdep` + the caller's bearer token) |
 
 ---
 
@@ -381,7 +431,13 @@ jwt_algorithm=HS256
 # Redis
 redis_host=localhost
 redis_port=6379
+
+# OpenRouter (AI agent)
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_MODEL=poolside/laguna-s-2.1:free
 ```
+
+`OPENROUTER_BASE_URL` defaults to `https://openrouter.ai/api/v1` (see `app/config.py`) and doesn't need to be set unless you're pointing at a different OpenAI-compatible endpoint.
 
 ### 3. Run the Application
 
@@ -449,7 +505,7 @@ pytest
 
 This project is still under active development. Planned/upcoming work includes:
 
-- 🤖 **AI Customer Support** — an AI agent to handle customer banking queries (balances, transaction history, general support) on top of the existing services.
+- 🤖 **Expand AI agent capabilities** — transaction history lookups and general support on top of the existing `check_balance` / `transfer_money` / `close_account` tools.
 - Additional account & transaction management endpoints.
 
 ---
