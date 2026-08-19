@@ -1,6 +1,6 @@
 # 🏦 Banking AI Agent
 
-> A database-driven Banking API built with **FastAPI**, **SQLModel**, **PostgreSQL (asyncpg)**, **Redis**, and **Pydantic v2** — featuring customer management, JWT authentication, account lifecycle, and transactional banking operations with a clean service-oriented architecture.
+> A database-driven Banking API built with **FastAPI**, **SQLModel**, **PostgreSQL (asyncpg)**, **Redis**, and **Pydantic v2** — featuring customer management, JWT authentication, account lifecycle, and transactional banking operations with a clean service-oriented architecture. Includes a **React + Vite** frontend and a streaming **AI banking agent** (LangChain/LangGraph over OpenRouter).
 
 > 🚧 **Status: Active development.** The core banking + auth flow, plus a streaming AI banking agent, are implemented, but this project is not finished. See [Roadmap](#-roadmap) for what's planned next.
 
@@ -27,6 +27,19 @@ banking-ai-agent/
 ├── alembic.ini                     # Alembic config (script location, DB URL placeholder)
 ├── docker-compose.test.yml         # Disposable Postgres container for the test suite
 ├── requirements.txt                # Python dependencies
+├── frontend/                       # React + Vite client (see Frontend section below)
+│   ├── .env.example                 # VITE_API_BASE_URL
+│   ├── src/
+│   │   ├── App.tsx                   # Route table (public + protected routes)
+│   │   ├── main.tsx                  # React entry point, mounts AuthProvider + router
+│   │   ├── context/AuthContext.tsx    # JWT session state, persisted to localStorage
+│   │   ├── lib/
+│   │   │   ├── api.ts                  # Typed fetch wrapper for every backend endpoint + SSE chat parser
+│   │   │   ├── jwt.ts                   # Client-side JWT decode/expiry check (no verification)
+│   │   │   └── types.ts                 # Shared TS types mirroring backend schemas
+│   │   ├── components/                # Layout, ProtectedRoute, AuthLayout, Card, Field, Button, Alert
+│   │   └── pages/                     # LoginPage, RegisterPage, DashboardPage, TransactionsPage, ChatPage
+│   └── package.json                 # React 19, Vite, Tailwind CSS v4, React Router v7
 └── app/
     ├── main.py                     # FastAPI entry point & lifespan events
     ├── config.py                   # Pydantic Settings (DB, JWT, Redis config from .env)
@@ -90,6 +103,7 @@ banking-ai-agent/
 | Migrations | Alembic (async, autogenerate from `SQLModel.metadata`) |
 | Testing | `pytest` + `pytest-asyncio` + `httpx` |
 | AI Agent | `langchain` + `langgraph` (`create_agent`) + `langchain-openai`, served via OpenRouter |
+| Frontend | React 19 + TypeScript, Vite, React Router v7, Tailwind CSS v4, `oxlint` |
 
 ---
 
@@ -316,6 +330,34 @@ All response schemas inherit from `TransactionResponse`, which includes `amount`
 
 ---
 
+## 🖥️ Frontend
+
+`frontend/` is a React 19 + TypeScript SPA (Vite + Tailwind CSS v4 + React Router v7) that consumes the API above. It's a separate app with its own `package.json`, dev server, and `.env`. The backend enables CORS (`app/main.py`) for the Vite dev origins (`http://localhost:5173`, `http://127.0.0.1:5173`) so the browser can call it directly from the dev server.
+
+### Auth flow
+
+- **`context/AuthContext.tsx`** — `login`/`register`/`logout` call the backend (`customersApi`, `userApi`), then decode the returned JWT client-side (`lib/jwt.ts`, no signature verification — decode only) to pull `customer_id`/`id` out of the payload. The resulting profile (`token`, `customerId`, `userId`, `email`, `name`) is kept in React state and persisted to `localStorage` (`banking.profile`) so a refresh doesn't log the user out.
+- On load, the stored profile is restored only if the token isn't expired (`isTokenExpired`), otherwise it's dropped and the user is treated as logged out.
+- **`components/ProtectedRoute.tsx`** — redirects to `/login` when there's no profile; otherwise renders `Layout` (nav + `Outlet`).
+
+### Routes (`App.tsx`)
+
+| Path | Page | Auth |
+|------|------|------|
+| `/login`, `/register` | `LoginPage`, `RegisterPage` | Public |
+| `/dashboard` | `DashboardPage` — view/open/close each account type (`SAVINGS`, `CURRENT`, `SALARY`) | Protected |
+| `/transactions` | `TransactionsPage` — deposit / withdraw / transfer forms | Protected |
+| `/assistant` | `ChatPage` — chat UI for the AI banking agent | Protected |
+| `*` | Redirects to `/dashboard` | — |
+
+### API client (`lib/api.ts`)
+
+A thin `fetch` wrapper (`request<T>()`) against `VITE_API_BASE_URL` (defaults to `http://localhost:8000`), grouped into `customersApi`, `userApi`, `accountsApi`, and `transactionsApi` — one function per backend endpoint, throwing a typed `ApiError` on non-2xx responses.
+
+`streamChat()` hits `POST /agent/chat` directly (not through `request()`, since it needs the raw streaming `Response` body) and parses the backend's `event: ...\ndata: ...\n\n` SSE frames into an async generator of `{ event, data }`, stopping on the `[DONE]` sentinel. `ChatPage` consumes this to render streamed tokens plus inline `tool_call`/`tool_result` indicators per assistant message.
+
+---
+
 ## 🧩 Architecture Patterns
 
 ### Service Layer (`BaseService`)
@@ -394,6 +436,7 @@ from app.database.models import Account, Customer
 ### Prerequisites
 
 - Python 3.11+
+- Node.js 18+ (for the frontend)
 - PostgreSQL (running instance)
 - Redis (running instance, used for JWT blacklisting on logout)
 
@@ -456,6 +499,17 @@ Tables are **auto-created** on startup via the lifespan event.
 | Swagger Docs | `http://127.0.0.1:8000/docs` |
 | Scalar Docs | `http://127.0.0.1:8000/scalar` |
 
+### 5. Run the Frontend
+
+```bash
+cd frontend
+npm install
+cp .env.example .env   # VITE_API_BASE_URL defaults to http://localhost:8000
+npm run dev
+```
+
+The Vite dev server prints its URL (default `http://localhost:5173`). Make sure the backend (and Redis) are running first, since every page other than login/register calls the API.
+
 ---
 
 ## 🧪 Testing
@@ -507,6 +561,7 @@ This project is still under active development. Planned/upcoming work includes:
 
 - 🤖 **Expand AI agent capabilities** — transaction history lookups and general support on top of the existing `check_balance` / `transfer_money` / `close_account` tools.
 - Additional account & transaction management endpoints.
+- Make the CORS allow-list configurable via `.env` instead of the hardcoded Vite dev origins in `app/main.py` (needed once the frontend is deployed anywhere other than `localhost:5173`).
 
 ---
 
